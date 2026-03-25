@@ -2,7 +2,7 @@
   "name": "ai-cost",
   "version": "0.1.0",
   "type": "module",
-  "license": "MIT",
+  "license": "FSL-1.1-ALv2",
   "main": "./dist/client/index.js",
   "types": "./dist/client/index.d.ts",
   "files": [
