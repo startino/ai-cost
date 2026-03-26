@@ -1,5 +1,5 @@
 import type { GenericActionCtx, GenericMutationCtx, GenericQueryCtx } from "convex/server";
-import type { api } from "../component/_generated/api.js";
+import type { ComponentApi } from "../component/_generated/component.js";
 
 // Re-export types and calculation functions
 export type {
@@ -66,14 +66,10 @@ export {
 } from "../validators.js";
 
 // ============================================================================
-// UseApi helper type
+// Types
 // ============================================================================
 
-type UseApi<API> = {
-  [mod in keyof API]: API[mod] extends Record<string, unknown>
-    ? { [fn in keyof API[mod]]: API[mod][fn] extends (...args: infer A) => infer R ? (...args: A) => R : API[mod][fn] }
-    : API[mod];
-};
+export type { ComponentApi } from "../component/_generated/component.js";
 
 type RunMutationCtx = { runMutation: GenericMutationCtx<never>["runMutation"] };
 type RunQueryCtx = { runQuery: GenericQueryCtx<never>["runQuery"] };
@@ -84,9 +80,9 @@ type RunActionCtx = { runAction: GenericActionCtx<never>["runAction"] };
 // ============================================================================
 
 export class AICost {
-  private component: UseApi<typeof api>;
+  private component: ComponentApi;
 
-  constructor(component: UseApi<typeof api>) {
+  constructor(component: ComponentApi) {
     this.component = component;
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@startino/ai-cost",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Convex component for AI and tool cost tracking with flexible attribution",
   "type": "module",
   "license": "FSL-1.1-ALv2",
