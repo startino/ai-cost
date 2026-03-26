@@ -68,6 +68,7 @@ export const addAICost = mutation({
 
     if (!pricing) {
       // No pricing found — record event with zero cost rather than losing it
+      console.warn(`[ai-cost] MISSING PRICING: provider='${args.providerId}' model='${args.modelId}' — recorded with $0 cost`);
       const eventId = await ctx.db.insert("costEvents", {
         type: "ai",
         providerId: args.providerId,
