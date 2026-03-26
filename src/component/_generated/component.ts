@@ -163,6 +163,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      listCostsByAttribute: FunctionReference<
+        "query",
+        "internal",
+        { attributeId: string; attributeType: string; limit?: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          amount: number;
+          attributions: Array<{ id: string; type: string }>;
+          breakdown?: any;
+          currency: string;
+          markupMultiplier?: number;
+          metadata?: any;
+          modelId?: string;
+          providerId: string;
+          toolId?: string;
+          type: "ai" | "tool";
+          usage: any;
+          userAmount: number;
+        }>,
+        Name
+      >;
     };
     markup: {
       deleteMarkup: FunctionReference<

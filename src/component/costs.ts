@@ -444,6 +444,64 @@ export const getCostsByAttribute = query({
 });
 
 // ============================================================================
+// Query: List costs by attribution (non-paginated, limited)
+// ============================================================================
+
+export const listCostsByAttribute = query({
+  args: {
+    attributeType: v.string(),
+    attributeId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(v.object({
+    _id: v.id("costEvents"),
+    _creationTime: v.number(),
+    type: v.union(v.literal("ai"), v.literal("tool")),
+    providerId: v.string(),
+    modelId: v.optional(v.string()),
+    toolId: v.optional(v.string()),
+    amount: v.number(),
+    currency: v.string(),
+    userAmount: v.number(),
+    markupMultiplier: v.optional(v.number()),
+    usage: v.any(),
+    breakdown: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+    attributions: v.array(v.object({ type: v.string(), id: v.string() })),
+  })),
+  handler: async (ctx, args) => {
+    const maxItems = args.limit ?? 50;
+
+    const attributions = await ctx.db
+      .query("costAttributions")
+      .withIndex("by_attribute", (q) =>
+        q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId),
+      )
+      .order("desc")
+      .take(maxItems);
+
+    const events = await Promise.all(
+      attributions.map(async (attr) => {
+        const event = await ctx.db.get(attr.costEventId);
+        if (!event) return null;
+
+        const allAttrs = await ctx.db
+          .query("costAttributions")
+          .withIndex("by_costEventId", (q) => q.eq("costEventId", event._id))
+          .collect();
+
+        return {
+          ...event,
+          attributions: allAttrs.map((a) => ({ type: a.attributeType, id: a.attributeId })),
+        };
+      }),
+    );
+
+    return events.filter((e): e is NonNullable<typeof e> => e !== null);
+  },
+});
+
+// ============================================================================
 // Query: Get aggregated totals by attribution
 // ============================================================================
 

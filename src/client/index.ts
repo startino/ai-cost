@@ -153,6 +153,13 @@ export class AICost {
     return await ctx.runQuery(this.component.costs.getCostsByAttribute, args);
   }
 
+  async listCostsByAttribute(
+    ctx: RunQueryCtx,
+    args: { attributeType: string; attributeId: string; limit?: number },
+  ) {
+    return await ctx.runQuery(this.component.costs.listCostsByAttribute, args);
+  }
+
   async getTotalByAttribute(
     ctx: RunQueryCtx,
     args: { attributeType: string; attributeId: string },
@@ -260,6 +267,7 @@ export class AICost {
       addToolCost: this.component.costs.addToolCost,
       addPreCalculatedCost: this.component.costs.addPreCalculatedCost,
       getCostsByAttribute: this.component.costs.getCostsByAttribute,
+      listCostsByAttribute: this.component.costs.listCostsByAttribute,
       getTotalByAttribute: this.component.costs.getTotalByAttribute,
       getCostEvent: this.component.costs.getCostEvent,
       deleteCostEvent: this.component.costs.deleteCostEvent,
