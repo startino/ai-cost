@@ -1,5 +1,10 @@
 node_modules/
 dist/
-src/component/_generated/
 .env
+.env.local
 *.tsbuildinfo
+convex/
+.agents/
+.claude/
+skills-lock.json
+AGENTS.md

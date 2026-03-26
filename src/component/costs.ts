@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server.js";
 import { paginationOptsValidator } from "convex/server";
 
 // ============================================================================
@@ -264,8 +264,9 @@ export const addToolCost = mutation({
 
     switch (usageType) {
       case "credits": {
-        const rate = (usageData.creditType && (pricing.creditTypes as Record<string, number> | undefined)?.[usageData.creditType as string])
-          || pricing.costPerCredit as number;
+        const creditTypes = pricing.creditTypes as Record<string, number> | undefined;
+        const specificRate = usageData.creditType ? creditTypes?.[usageData.creditType as string] : undefined;
+        const rate = specificRate ?? (pricing.costPerCredit as number);
         amount = round8((usageData.credits as number) * rate);
         breakdown = { type: "credits", credits: usageData.credits, costPerCredit: rate };
         break;
@@ -278,8 +279,9 @@ export const addToolCost = mutation({
         break;
       }
       case "requests": {
-        const rate = (usageData.requestType && (pricing.requestTypes as Record<string, number> | undefined)?.[usageData.requestType as string])
-          || pricing.costPerRequest as number;
+        const requestTypes = pricing.requestTypes as Record<string, number> | undefined;
+        const specificRate = usageData.requestType ? requestTypes?.[usageData.requestType as string] : undefined;
+        const rate = specificRate ?? (pricing.costPerRequest as number);
         amount = round8((usageData.requests as number) * rate);
         breakdown = { type: "requests", requests: usageData.requests, costPerRequest: rate };
         break;

@@ -1,8 +1,28 @@
 {
-  "name": "ai-cost",
+  "name": "@startino/ai-cost",
   "version": "0.1.0",
+  "description": "Convex component for AI and tool cost tracking with flexible attribution",
   "type": "module",
   "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/startino/ai-cost.git"
+  },
+  "homepage": "https://github.com/startino/ai-cost#readme",
+  "bugs": {
+    "url": "https://github.com/startino/ai-cost/issues"
+  },
+  "keywords": [
+    "convex",
+    "ai",
+    "cost",
+    "usage",
+    "tracking",
+    "metering",
+    "llm",
+    "pricing",
+    "attribution"
+  ],
   "main": "./dist/client/index.js",
   "types": "./dist/client/index.d.ts",
   "files": [
@@ -10,9 +30,20 @@
     "src"
   ],
   "exports": {
+    "./package.json": "./package.json",
     ".": {
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
+    },
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./_generated/component": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
     },
     "./convex.config": {
       "types": "./dist/component/convex.config.d.ts",
@@ -27,16 +58,21 @@
       "default": "./dist/shared.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "npx @convex-dev/component-build build",
-    "dev": "npx @convex-dev/component-build dev",
-    "typecheck": "tsc --noEmit"
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "codegen": "convex codegen --component-dir ./src/component",
+    "build": "npm run codegen && tsc --project ./tsconfig.build.json",
+    "dev": "convex dev --typecheck-components",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "convex": "^1.24.8"
   },
   "devDependencies": {
-    "@convex-dev/component-build": "^0.0.40",
-    "typescript": "~5.7.0"
+    "typescript": "~5.8.0"
   }
 }
