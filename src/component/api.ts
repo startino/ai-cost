@@ -4,8 +4,10 @@ import {
   addPreCalculatedCost,
   getCostsByAttribute,
   listCostsByAttribute,
+  listCostsByMultipleAttributes,
   getTotalByAttribute,
   getCostEvent,
+  getDistinctAttributeValues,
   deleteCostEvent,
   deleteCostsByAttribute,
 } from "./costs.js";
@@ -40,8 +42,10 @@ export const createCostsApi = () => ({
   addPreCalculatedCost,
   getCostsByAttribute,
   listCostsByAttribute,
+  listCostsByMultipleAttributes,
   getTotalByAttribute,
   getCostEvent,
+  getDistinctAttributeValues,
   deleteCostEvent,
   deleteCostsByAttribute,
 });

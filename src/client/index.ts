@@ -160,11 +160,25 @@ export class AICost {
     return await ctx.runQuery(this.component.costs.listCostsByAttribute, args);
   }
 
+  async listCostsByMultipleAttributes(
+    ctx: RunQueryCtx,
+    args: { filters: Array<{ type: string; id: string }>; limit?: number },
+  ) {
+    return await ctx.runQuery(this.component.costs.listCostsByMultipleAttributes, args);
+  }
+
   async getTotalByAttribute(
     ctx: RunQueryCtx,
     args: { attributeType: string; attributeId: string },
   ) {
     return await ctx.runQuery(this.component.costs.getTotalByAttribute, args);
+  }
+
+  async getDistinctAttributeValues(
+    ctx: RunQueryCtx,
+    args: { attributeType: string; scopeType?: string; scopeId?: string },
+  ) {
+    return await ctx.runQuery(this.component.costs.getDistinctAttributeValues, args);
   }
 
   async getCostEvent(ctx: RunQueryCtx, args: { id: string }) {
@@ -268,7 +282,9 @@ export class AICost {
       addPreCalculatedCost: this.component.costs.addPreCalculatedCost,
       getCostsByAttribute: this.component.costs.getCostsByAttribute,
       listCostsByAttribute: this.component.costs.listCostsByAttribute,
+      listCostsByMultipleAttributes: this.component.costs.listCostsByMultipleAttributes,
       getTotalByAttribute: this.component.costs.getTotalByAttribute,
+      getDistinctAttributeValues: this.component.costs.getDistinctAttributeValues,
       getCostEvent: this.component.costs.getCostEvent,
       deleteCostEvent: this.component.costs.deleteCostEvent,
       deleteCostsByAttribute: this.component.costs.deleteCostsByAttribute,

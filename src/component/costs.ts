@@ -591,6 +591,106 @@ export const getCostEvent = query({
 });
 
 // ============================================================================
+// Query: Get distinct attribute values for a given type
+// ============================================================================
+
+export const getDistinctAttributeValues = query({
+  args: {
+    attributeType: v.string(),
+    scopeType: v.optional(v.string()),
+    scopeId: v.optional(v.string()),
+  },
+  returns: v.array(v.string()),
+  handler: async (ctx, args) => {
+    const attributions = await ctx.db
+      .query("costAttributions")
+      .withIndex("by_attribute", (q) => q.eq("attributeType", args.attributeType))
+      .collect();
+
+    if (!args.scopeType || !args.scopeId) {
+      return [...new Set(attributions.map((a) => a.attributeId))];
+    }
+
+    // Filter to only events that also have the scope attribution
+    const scopeAttrs = await ctx.db
+      .query("costAttributions")
+      .withIndex("by_attribute", (q) =>
+        q.eq("attributeType", args.scopeType!).eq("attributeId", args.scopeId!),
+      )
+      .collect();
+    const scopeEventIds = new Set(scopeAttrs.map((a) => a.costEventId));
+
+    const filtered = attributions.filter((a) => scopeEventIds.has(a.costEventId));
+    return [...new Set(filtered.map((a) => a.attributeId))];
+  },
+});
+
+// ============================================================================
+// Query: List costs matching multiple attribution filters (AND logic)
+// ============================================================================
+
+export const listCostsByMultipleAttributes = query({
+  args: {
+    filters: v.array(v.object({ type: v.string(), id: v.string() })),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    if (args.filters.length === 0) return [];
+    const maxItems = args.limit ?? 100;
+
+    // Get event IDs matching each filter, then intersect
+    let resultEventIds: Set<string> | null = null;
+
+    for (const filter of args.filters) {
+      const attrs = await ctx.db
+        .query("costAttributions")
+        .withIndex("by_attribute", (q) =>
+          q.eq("attributeType", filter.type).eq("attributeId", filter.id),
+        )
+        .collect();
+      const eventIds = new Set(attrs.map((a) => a.costEventId as string));
+
+      if (resultEventIds === null) {
+        resultEventIds = eventIds;
+      } else {
+        resultEventIds = new Set([...resultEventIds].filter((id: string) => eventIds.has(id)));
+      }
+
+      if (resultEventIds.size === 0) return [];
+    }
+
+    // Fetch cost events by ID
+    const ids = [...resultEventIds!];
+    const events = [];
+    for (const id of ids) {
+      const event = await ctx.db
+        .query("costEvents")
+        .filter((q) => q.eq(q.field("_id"), id))
+        .first();
+      if (event) events.push(event);
+    }
+
+    // Sort by creation time desc, limit
+    events.sort((a, b) => b._creationTime - a._creationTime);
+    const limited = events.slice(0, maxItems);
+
+    // Enrich with attributions
+    return await Promise.all(
+      limited.map(async (event) => {
+        const allAttrs = await ctx.db
+          .query("costAttributions")
+          .withIndex("by_costEventId", (q) => q.eq("costEventId", event._id))
+          .collect();
+        return {
+          ...event,
+          attributions: allAttrs.map((a) => ({ type: a.attributeType, id: a.attributeId })),
+        };
+      }),
+    );
+  },
+});
+
+// ============================================================================
 // Mutation: Delete cost event and its attributions
 // ============================================================================
 

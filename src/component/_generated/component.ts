@@ -151,6 +151,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      getDistinctAttributeValues: FunctionReference<
+        "query",
+        "internal",
+        { attributeType: string; scopeId?: string; scopeType?: string },
+        Array<string>,
+        Name
+      >;
       getTotalByAttribute: FunctionReference<
         "query",
         "internal",
@@ -183,6 +190,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           usage: any;
           userAmount: number;
         }>,
+        Name
+      >;
+      listCostsByMultipleAttributes: FunctionReference<
+        "query",
+        "internal",
+        { filters: Array<{ id: string; type: string }>; limit?: number },
+        any,
         Name
       >;
     };
