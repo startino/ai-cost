@@ -67,7 +67,25 @@ export const addAICost = mutation({
       .first();
 
     if (!pricing) {
-      throw new Error(`No pricing found for provider '${args.providerId}' model '${args.modelId}'. Run updatePricingData first.`);
+      // No pricing found — record event with zero cost rather than losing it
+      const eventId = await ctx.db.insert("costEvents", {
+        type: "ai",
+        providerId: args.providerId,
+        modelId: args.modelId,
+        amount: 0,
+        currency: "USD",
+        userAmount: 0,
+        usage: args.usage,
+        metadata: { ...((args.metadata as Record<string, unknown>) ?? {}), _pricingMissing: true },
+      });
+      for (const attr of args.attributions) {
+        await ctx.db.insert("costAttributions", {
+          costEventId: eventId,
+          attributeType: attr.type,
+          attributeId: attr.id,
+        });
+      }
+      return eventId;
     }
 
     // Resolve markup multiplier
