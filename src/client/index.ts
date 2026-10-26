@@ -147,7 +147,9 @@ export class AICost {
     args: {
       attributeType: string;
       attributeId: string;
-      paginationOpts: { numItems: number; cursor: string | null };
+      paginationOpts: { numItems: number; cursor: number | null };
+      startTime?: number;
+      endTime?: number;
     },
   ) {
     return await ctx.runQuery(this.component.costs.getCostsByAttribute, args);
@@ -155,21 +157,21 @@ export class AICost {
 
   async listCostsByAttribute(
     ctx: RunQueryCtx,
-    args: { attributeType: string; attributeId: string; limit?: number },
+    args: { attributeType: string; attributeId: string; limit?: number; startTime?: number; endTime?: number },
   ) {
     return await ctx.runQuery(this.component.costs.listCostsByAttribute, args);
   }
 
   async listCostsByMultipleAttributes(
     ctx: RunQueryCtx,
-    args: { filters: Array<{ type: string; id: string }>; limit?: number },
+    args: { filters: Array<{ type: string; id: string }>; limit?: number; startTime?: number; endTime?: number },
   ) {
     return await ctx.runQuery(this.component.costs.listCostsByMultipleAttributes, args);
   }
 
   async getTotalByAttribute(
     ctx: RunQueryCtx,
-    args: { attributeType: string; attributeId: string },
+    args: { attributeType: string; attributeId: string; startTime?: number; endTime?: number },
   ) {
     return await ctx.runQuery(this.component.costs.getTotalByAttribute, args);
   }
@@ -194,6 +196,13 @@ export class AICost {
     args: { attributeType: string; attributeId: string },
   ) {
     return await ctx.runMutation(this.component.costs.deleteCostsByAttribute, args);
+  }
+
+  async recalculateCachedCostsBatch(
+    ctx: RunMutationCtx,
+    args: { cursor: string | null; batchSize?: number },
+  ) {
+    return await ctx.runMutation(this.component.costs.recalculateCachedCostsBatch, args);
   }
 
   // ==========================================================================

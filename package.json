@@ -1,6 +1,6 @@
 {
   "name": "@startino/ai-cost",
-  "version": "0.1.5",
+  "version": "0.1.14",
   "description": "Convex component for AI and tool cost tracking with flexible attribution",
   "type": "module",
   "license": "FSL-1.1-ALv2",
@@ -63,11 +63,11 @@
   },
   "scripts": {
     "clean": "rm -rf dist *.tsbuildinfo",
-    "codegen": "convex codegen --component-dir ./src/component",
-    "build": "npm run codegen && tsc --project ./tsconfig.build.json",
-    "dev": "convex dev --typecheck-components",
-    "typecheck": "tsc --noEmit",
-    "prepare": "npm run build"
+    "codegen": "bunx convex codegen --component-dir ./src/component",
+    "build": "bun run clean && bun run codegen && bunx tsc --project ./tsconfig.build.json",
+    "dev": "bunx convex dev --typecheck-components",
+    "typecheck": "bunx tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "convex": "^1.24.8"

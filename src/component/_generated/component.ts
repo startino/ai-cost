@@ -78,6 +78,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         string,
         Name
       >;
+      recalculateCachedCostsBatch: FunctionReference<
+        "mutation",
+        "internal",
+        { cursor: string | null; batchSize?: number },
+        {
+          continueCursor: string | null;
+          isDone: boolean;
+          processed: number;
+          fixed: number;
+        },
+        Name
+      >;
       deleteCostEvent: FunctionReference<
         "mutation",
         "internal",
@@ -120,17 +132,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           attributeId: string;
           attributeType: string;
+          endTime?: number;
           paginationOpts: {
-            cursor: string | null;
-            endCursor?: string | null;
-            id?: number;
-            maximumBytesRead?: number;
-            maximumRowsRead?: number;
+            cursor: number | null;
             numItems: number;
           };
+          startTime?: number;
         },
         {
-          continueCursor: string;
+          continueCursor: number | null;
           isDone: boolean;
           page: Array<{
             _creationTime: number;

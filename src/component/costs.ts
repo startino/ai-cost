@@ -1,6 +1,11 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server.js";
-import { paginationOptsValidator } from "convex/server";
+
+export const version0114 = query({
+  args: {},
+  returns: v.string(),
+  handler: async () => "ai-cost@0.1.14",
+});
 
 // ============================================================================
 // Internal: Save cost event + attributions (used by addAICost/addToolCost)
@@ -116,7 +121,9 @@ export const addAICost = mutation({
     const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
     const prices = pricing.pricing;
 
-    const promptTokensCost = ((args.usage.promptTokens || 0) / MILLION) * (prices.input || 0);
+    // promptTokens is TOTAL input tokens (includes cached). Subtract cached to avoid double-counting.
+    const nonCachedPromptTokens = (args.usage.promptTokens || 0) - (args.usage.cachedInputTokens || 0);
+    const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
     const completionTokensCost = ((args.usage.completionTokens || 0) / MILLION) * (prices.output || 0);
     const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
     const reasoningTokensCost = ((args.usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
@@ -404,7 +411,12 @@ export const getCostsByAttribute = query({
   args: {
     attributeType: v.string(),
     attributeId: v.string(),
-    paginationOpts: paginationOptsValidator,
+    paginationOpts: v.object({
+      numItems: v.number(),
+      cursor: v.union(v.number(), v.null()),
+    }),
+    startTime: v.optional(v.number()),
+    endTime: v.optional(v.number()),
   },
   returns: v.object({
     page: v.array(v.object({
@@ -424,20 +436,36 @@ export const getCostsByAttribute = query({
       attributions: v.array(v.object({ type: v.string(), id: v.string() })),
     })),
     isDone: v.boolean(),
-    continueCursor: v.string(),
+    continueCursor: v.union(v.number(), v.null()),
   }),
   handler: async (ctx, args) => {
-    const attributionPage = await ctx.db
+    const { numItems, cursor } = args.paginationOpts;
+
+    // Manual cursor-based pagination using _creationTime
+    // The by_attribute index is [attributeType, attributeId, _creationTime]
+    // Upper bound: cursor (next page) takes priority over endTime (first page)
+    const upperBound = cursor ?? args.endTime;
+    const attributions = await ctx.db
       .query("costAttributions")
-      .withIndex("by_attribute", (q) =>
-        q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId),
-      )
+      .withIndex("by_attribute", (q) => {
+        const eqs = q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId);
+        if (args.startTime !== undefined && upperBound != null)
+          return eqs.gte("_creationTime", args.startTime).lt("_creationTime", upperBound);
+        if (args.startTime !== undefined)
+          return eqs.gte("_creationTime", args.startTime);
+        if (upperBound != null)
+          return eqs.lt("_creationTime", upperBound);
+        return eqs;
+      })
       .order("desc")
-      .paginate(args.paginationOpts);
+      .take(numItems + 1);
+
+    const hasMore = attributions.length > numItems;
+    const pageAttributions = hasMore ? attributions.slice(0, numItems) : attributions;
 
     // Fetch cost events for this page
     const events = await Promise.all(
-      attributionPage.page.map(async (attr) => {
+      pageAttributions.map(async (attr) => {
         const event = await ctx.db.get(attr.costEventId);
         if (!event) return null;
 
@@ -454,10 +482,11 @@ export const getCostsByAttribute = query({
       }),
     );
 
+    const lastAttr = pageAttributions[pageAttributions.length - 1];
     return {
       page: events.filter((e): e is NonNullable<typeof e> => e !== null),
-      isDone: attributionPage.isDone,
-      continueCursor: attributionPage.continueCursor,
+      isDone: !hasMore,
+      continueCursor: lastAttr ? lastAttr._creationTime : null,
     };
   },
 });
@@ -471,6 +500,8 @@ export const listCostsByAttribute = query({
     attributeType: v.string(),
     attributeId: v.string(),
     limit: v.optional(v.number()),
+    startTime: v.optional(v.number()),
+    endTime: v.optional(v.number()),
   },
   returns: v.array(v.object({
     _id: v.id("costEvents"),
@@ -493,9 +524,14 @@ export const listCostsByAttribute = query({
 
     const attributions = await ctx.db
       .query("costAttributions")
-      .withIndex("by_attribute", (q) =>
-        q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId),
-      )
+      .withIndex("by_attribute", (q) => {
+        const eqs = q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId);
+        if (args.startTime !== undefined && args.endTime !== undefined)
+          return eqs.gte("_creationTime", args.startTime).lt("_creationTime", args.endTime);
+        if (args.startTime !== undefined) return eqs.gte("_creationTime", args.startTime);
+        if (args.endTime !== undefined) return eqs.lt("_creationTime", args.endTime);
+        return eqs;
+      })
       .order("desc")
       .take(maxItems);
 
@@ -528,6 +564,8 @@ export const getTotalByAttribute = query({
   args: {
     attributeType: v.string(),
     attributeId: v.string(),
+    startTime: v.optional(v.number()),
+    endTime: v.optional(v.number()),
   },
   returns: v.object({
     totalAmount: v.number(),
@@ -538,9 +576,14 @@ export const getTotalByAttribute = query({
   handler: async (ctx, args) => {
     const attributions = await ctx.db
       .query("costAttributions")
-      .withIndex("by_attribute", (q) =>
-        q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId),
-      )
+      .withIndex("by_attribute", (q) => {
+        const eqs = q.eq("attributeType", args.attributeType).eq("attributeId", args.attributeId);
+        if (args.startTime !== undefined && args.endTime !== undefined)
+          return eqs.gte("_creationTime", args.startTime).lt("_creationTime", args.endTime);
+        if (args.startTime !== undefined) return eqs.gte("_creationTime", args.startTime);
+        if (args.endTime !== undefined) return eqs.lt("_creationTime", args.endTime);
+        return eqs;
+      })
       .collect();
 
     let totalAmount = 0;
@@ -652,60 +695,176 @@ export const listCostsByMultipleAttributes = query({
   args: {
     filters: v.array(v.object({ type: v.string(), id: v.string() })),
     limit: v.optional(v.number()),
+    startTime: v.optional(v.number()),
+    endTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (args.filters.length === 0) return [];
     const maxItems = args.limit ?? 100;
 
-    // Get event IDs matching each filter, then intersect
-    let resultEventIds: Set<string> | null = null;
+    const [primaryFilter, ...restFilters] = args.filters;
 
-    for (const filter of args.filters) {
+    // Build intersection sets from non-primary filters (indexed reads)
+    const intersectionSets: Set<string>[] = [];
+    for (const filter of restFilters) {
       const attrs = await ctx.db
         .query("costAttributions")
-        .withIndex("by_attribute", (q) =>
-          q.eq("attributeType", filter.type).eq("attributeId", filter.id),
-        )
+        .withIndex("by_attribute", (q) => {
+          const eqs = q.eq("attributeType", filter.type).eq("attributeId", filter.id);
+          if (args.startTime !== undefined && args.endTime !== undefined)
+            return eqs.gte("_creationTime", args.startTime).lt("_creationTime", args.endTime);
+          if (args.startTime !== undefined) return eqs.gte("_creationTime", args.startTime);
+          if (args.endTime !== undefined) return eqs.lt("_creationTime", args.endTime);
+          return eqs;
+        })
         .collect();
-      const eventIds = new Set(attrs.map((a) => a.costEventId as string));
-
-      if (resultEventIds === null) {
-        resultEventIds = eventIds;
-      } else {
-        resultEventIds = new Set([...resultEventIds].filter((id: string) => eventIds.has(id)));
-      }
-
-      if (resultEventIds.size === 0) return [];
+      intersectionSets.push(new Set(attrs.map((a) => a.costEventId as string)));
     }
 
-    // Fetch cost events by ID
-    const ids = [...resultEventIds!];
+    // Scan primary filter's attributions in desc order (most recent first).
+    // Attribution creation order matches event creation order.
+    const primaryAttrs = await ctx.db
+      .query("costAttributions")
+      .withIndex("by_attribute", (q) => {
+        const eqs = q.eq("attributeType", primaryFilter.type).eq("attributeId", primaryFilter.id);
+        if (args.startTime !== undefined && args.endTime !== undefined)
+          return eqs.gte("_creationTime", args.startTime).lt("_creationTime", args.endTime);
+        if (args.startTime !== undefined) return eqs.gte("_creationTime", args.startTime);
+        if (args.endTime !== undefined) return eqs.lt("_creationTime", args.endTime);
+        return eqs;
+      })
+      .order("desc")
+      .collect();
+
+    // Iterate in order, check intersection, fetch + enrich, stop at limit
     const events = [];
-    for (const id of ids) {
-      const event = await ctx.db
-        .query("costEvents")
-        .filter((q) => q.eq(q.field("_id"), id))
-        .first();
-      if (event) events.push(event);
+    const seen = new Set<string>();
+
+    for (const attr of primaryAttrs) {
+      const eventIdStr = attr.costEventId as string;
+      if (seen.has(eventIdStr)) continue;
+      seen.add(eventIdStr);
+
+      if (!intersectionSets.every((set) => set.has(eventIdStr))) continue;
+
+      const event = await ctx.db.get(attr.costEventId);
+      if (!event) continue;
+
+      const allAttrs = await ctx.db
+        .query("costAttributions")
+        .withIndex("by_costEventId", (q) => q.eq("costEventId", event._id))
+        .collect();
+
+      events.push({
+        ...event,
+        attributions: allAttrs.map((a) => ({ type: a.attributeType, id: a.attributeId })),
+      });
+
+      if (events.length >= maxItems) break;
     }
 
-    // Sort by creation time desc, limit
-    events.sort((a, b) => b._creationTime - a._creationTime);
-    const limited = events.slice(0, maxItems);
+    return events;
+  },
+});
 
-    // Enrich with attributions
-    return await Promise.all(
-      limited.map(async (event) => {
-        const allAttrs = await ctx.db
-          .query("costAttributions")
-          .withIndex("by_costEventId", (q) => q.eq("costEventId", event._id))
-          .collect();
-        return {
-          ...event,
-          attributions: allAttrs.map((a) => ({ type: a.attributeType, id: a.attributeId })),
-        };
-      }),
-    );
+// ============================================================================
+// Migration: Recalculate costs for events affected by cached token double-count
+// ============================================================================
+
+export const recalculateCachedCostsBatch = mutation({
+  args: {
+    cursor: v.union(v.string(), v.null()),
+    batchSize: v.optional(v.number()),
+  },
+  returns: v.object({
+    continueCursor: v.union(v.string(), v.null()),
+    isDone: v.boolean(),
+    processed: v.number(),
+    fixed: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 100;
+    const MILLION = 1_000_000;
+    const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
+
+    // Scan costEvents table in order
+    let query = ctx.db.query("costEvents").order("asc");
+    if (args.cursor) {
+      const cursorTime = parseFloat(args.cursor);
+      query = ctx.db
+        .query("costEvents")
+        .filter((q) => q.gte(q.field("_creationTime"), cursorTime))
+        .order("asc") as typeof query;
+    }
+    const events = await query.take(batchSize + 1);
+
+    const hasMore = events.length > batchSize;
+    const batch = hasMore ? events.slice(0, batchSize) : events;
+    let fixed = 0;
+
+    for (const event of batch) {
+      if (event.type !== "ai") continue;
+
+      const usage = event.usage as {
+        promptTokens?: number;
+        completionTokens?: number;
+        reasoningTokens?: number;
+        cachedInputTokens?: number;
+      } | undefined;
+
+      if (!usage?.cachedInputTokens || usage.cachedInputTokens === 0) continue;
+
+      // Look up pricing for this model
+      const pricing = event.modelId
+        ? await ctx.db
+            .query("aiPricing")
+            .withIndex("by_model", (q) =>
+              q.eq("providerId", event.providerId).eq("modelId", event.modelId!),
+            )
+            .first()
+        : null;
+
+      if (!pricing) continue;
+
+      const prices = pricing.pricing;
+      const markup = event.markupMultiplier ?? 1;
+
+      // Recalculate with fix: subtract cached from prompt
+      const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
+      const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
+      const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
+      const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
+      const reasoningTokensCost = ((usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
+      const cacheReadPrice = prices.cache_read ?? (prices.input || 0) * 0.25;
+      const cachedInputTokensCost = ((usage.cachedInputTokens || 0) / MILLION) * cacheReadPrice;
+
+      const totalCost = round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost);
+      const userTotalCost = round8(totalCost * markup);
+
+      // Skip if already correct (idempotent)
+      if (event.amount === totalCost && event.userAmount === userTotalCost) continue;
+
+      await ctx.db.patch(event._id, {
+        amount: totalCost,
+        userAmount: userTotalCost,
+        breakdown: {
+          promptTokensCost: round8(promptTokensCost),
+          completionTokensCost: round8(completionTokensCost),
+          reasoningTokensCost: round8(reasoningTokensCost),
+          cachedInputTokensCost: round8(cachedInputTokensCost),
+        },
+      });
+      fixed++;
+    }
+
+    const lastEvent = batch[batch.length - 1];
+    return {
+      // Use _creationTime + small epsilon to avoid re-processing the last event
+      continueCursor: hasMore && lastEvent ? String(lastEvent._creationTime + 0.001) : null,
+      isDone: !hasMore,
+      processed: batch.length,
+      fixed,
+    };
   },
 });
 

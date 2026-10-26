@@ -29,7 +29,9 @@ const round8 = (value: number): number => Math.round(value * 1e8) / 1e8;
 export const calculateCosts = (usage: Usage, pricing: Pricing): CalculatedCosts => {
   const { pricing: prices } = pricing;
 
-  const promptTokensCost = ((usage.promptTokens || 0) / MILLION) * (prices.input || 0);
+  // promptTokens is TOTAL input tokens (includes cached). Subtract cached to avoid double-counting.
+  const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
+  const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
   const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
 
   // Reasoning tokens bill at output rate when no separate reasoning price exists
