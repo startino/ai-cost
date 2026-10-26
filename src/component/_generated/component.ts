@@ -78,18 +78,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         string,
         Name
       >;
-      recalculateCachedCostsBatch: FunctionReference<
-        "mutation",
-        "internal",
-        { cursor: string | null; batchSize?: number },
-        {
-          continueCursor: string | null;
-          isDone: boolean;
-          processed: number;
-          fixed: number;
-        },
-        Name
-      >;
       deleteCostEvent: FunctionReference<
         "mutation",
         "internal",
@@ -133,10 +121,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           attributeId: string;
           attributeType: string;
           endTime?: number;
-          paginationOpts: {
-            cursor: number | null;
-            numItems: number;
-          };
+          paginationOpts: { cursor: number | null; numItems: number };
           startTime?: number;
         },
         {
@@ -171,7 +156,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       getTotalByAttribute: FunctionReference<
         "query",
         "internal",
-        { attributeId: string; attributeType: string },
+        {
+          attributeId: string;
+          attributeType: string;
+          endTime?: number;
+          startTime?: number;
+        },
         {
           count: number;
           currency: string;
@@ -183,7 +173,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       listCostsByAttribute: FunctionReference<
         "query",
         "internal",
-        { attributeId: string; attributeType: string; limit?: number },
+        {
+          attributeId: string;
+          attributeType: string;
+          endTime?: number;
+          limit?: number;
+          startTime?: number;
+        },
         Array<{
           _creationTime: number;
           _id: string;
@@ -205,10 +201,40 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       listCostsByMultipleAttributes: FunctionReference<
         "query",
         "internal",
-        { filters: Array<{ id: string; type: string }>; limit?: number },
+        {
+          endTime?: number;
+          filters: Array<{ id: string; type: string }>;
+          limit?: number;
+          startTime?: number;
+        },
         any,
         Name
       >;
+      recalculateCachedCostsBatch: FunctionReference<
+        "mutation",
+        "internal",
+        { batchSize?: number; cursor: string | null },
+        {
+          continueCursor: string | null;
+          fixed: number;
+          isDone: boolean;
+          processed: number;
+        },
+        Name
+      >;
+      recalculateMissingPricingBatch: FunctionReference<
+        "mutation",
+        "internal",
+        { batchSize?: number; cursor: string | null },
+        {
+          continueCursor: string | null;
+          fixed: number;
+          isDone: boolean;
+          processed: number;
+        },
+        Name
+      >;
+      version0114: FunctionReference<"query", "internal", {}, string, Name>;
     };
     markup: {
       deleteMarkup: FunctionReference<

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server.js";
+import { mutation, query, internalMutation, type MutationCtx } from "./_generated/server.js";
+import type { Doc } from "./_generated/dataModel.js";
 
 export const version0114 = query({
   args: {},
@@ -43,6 +44,55 @@ export const saveCostEvent = internalMutation({
     return eventId;
   },
 });
+
+// ============================================================================
+// AI cost helpers (used by addAICost/recalculateMissingPricingBatch)
+// ============================================================================
+
+const resolveAIMarkup = async (ctx: MutationCtx, providerId: string, modelId: string) => {
+  const modelMarkup = await ctx.db
+    .query("markupMultiplier")
+    .withIndex("by_scope_and_provider", (q) => q.eq("scope", "model").eq("providerId", providerId))
+    .collect();
+  const modelMatch = modelMarkup.find((m) => "modelId" in m && m.modelId === modelId);
+  if (modelMatch) return modelMatch.markupMultiplier;
+
+  const providerMarkup = await ctx.db
+    .query("markupMultiplier")
+    .withIndex("by_scope_and_provider", (q) => q.eq("scope", "provider").eq("providerId", providerId))
+    .first();
+  return providerMarkup?.markupMultiplier ?? 1;
+};
+
+const calculateAICost = (
+  prices: Doc<"aiPricing">["pricing"],
+  usage: { promptTokens?: number; completionTokens?: number; reasoningTokens?: number; cachedInputTokens?: number },
+  markup: number,
+) => {
+  const MILLION = 1_000_000;
+  const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
+
+  // promptTokens is TOTAL input tokens (includes cached). Subtract cached to avoid double-counting.
+  const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
+  const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
+  const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
+  const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
+  const reasoningTokensCost = ((usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
+  const cacheReadPrice = prices.cache_read ?? (prices.input || 0) * 0.25;
+  const cachedInputTokensCost = ((usage.cachedInputTokens || 0) / MILLION) * cacheReadPrice;
+
+  const totalCost = round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost);
+  return {
+    totalCost,
+    userTotalCost: round8(totalCost * markup),
+    breakdown: {
+      promptTokensCost: round8(promptTokensCost),
+      completionTokensCost: round8(completionTokensCost),
+      reasoningTokensCost: round8(reasoningTokensCost),
+      cachedInputTokensCost: round8(cachedInputTokensCost),
+    },
+  };
+};
 
 // ============================================================================
 // Add AI Cost
@@ -94,51 +144,8 @@ export const addAICost = mutation({
       return eventId;
     }
 
-    // Resolve markup multiplier
-    let markup = args.markupMultiplier;
-    if (markup === undefined) {
-      // Check model-level markup
-      const modelMarkup = await ctx.db
-        .query("markupMultiplier")
-        .withIndex("by_scope_and_provider", (q) => q.eq("scope", "model").eq("providerId", args.providerId))
-        .collect();
-      const modelMatch = modelMarkup.find((m) => "modelId" in m && m.modelId === args.modelId);
-
-      if (modelMatch) {
-        markup = modelMatch.markupMultiplier;
-      } else {
-        // Fall back to provider-level
-        const providerMarkup = await ctx.db
-          .query("markupMultiplier")
-          .withIndex("by_scope_and_provider", (q) => q.eq("scope", "provider").eq("providerId", args.providerId))
-          .first();
-        markup = providerMarkup?.markupMultiplier ?? 1;
-      }
-    }
-
-    // Calculate costs (inline to avoid importing shared.ts in component)
-    const MILLION = 1_000_000;
-    const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
-    const prices = pricing.pricing;
-
-    // promptTokens is TOTAL input tokens (includes cached). Subtract cached to avoid double-counting.
-    const nonCachedPromptTokens = (args.usage.promptTokens || 0) - (args.usage.cachedInputTokens || 0);
-    const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
-    const completionTokensCost = ((args.usage.completionTokens || 0) / MILLION) * (prices.output || 0);
-    const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
-    const reasoningTokensCost = ((args.usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
-    const cacheReadPrice = prices.cache_read ?? (prices.input || 0) * 0.25;
-    const cachedInputTokensCost = ((args.usage.cachedInputTokens || 0) / MILLION) * cacheReadPrice;
-
-    const totalCost = round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost);
-    const userTotalCost = round8(totalCost * markup);
-
-    const breakdown = {
-      promptTokensCost: round8(promptTokensCost),
-      completionTokensCost: round8(completionTokensCost),
-      reasoningTokensCost: round8(reasoningTokensCost),
-      cachedInputTokensCost: round8(cachedInputTokensCost),
-    };
+    const markup = args.markupMultiplier ?? (await resolveAIMarkup(ctx, args.providerId, args.modelId));
+    const { totalCost, userTotalCost, breakdown } = calculateAICost(pricing.pricing, args.usage, markup);
 
     // Insert cost event
     const eventId = await ctx.db.insert("costEvents", {
@@ -861,6 +868,66 @@ export const recalculateCachedCostsBatch = mutation({
     return {
       // Use _creationTime + small epsilon to avoid re-processing the last event
       continueCursor: hasMore && lastEvent ? String(lastEvent._creationTime + 0.001) : null,
+      isDone: !hasMore,
+      processed: batch.length,
+      fixed,
+    };
+  },
+});
+
+// ============================================================================
+// Migration: Recalculate costs for events recorded while pricing was missing
+// ============================================================================
+
+export const recalculateMissingPricingBatch = mutation({
+  args: {
+    cursor: v.union(v.string(), v.null()),
+    batchSize: v.optional(v.number()),
+  },
+  returns: v.object({
+    continueCursor: v.union(v.string(), v.null()),
+    isDone: v.boolean(),
+    processed: v.number(),
+    fixed: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 100;
+    const cursor = args.cursor;
+    const events = await ctx.db
+      .query("costEvents")
+      .withIndex("by_creation_time", (q) => (cursor === null ? q : q.gte("_creationTime", Number(cursor))))
+      .order("asc")
+      .take(batchSize + 1);
+
+    const hasMore = events.length > batchSize;
+    const batch = hasMore ? events.slice(0, batchSize) : events;
+    let fixed = 0;
+
+    for (const event of batch) {
+      if (event.type !== "ai" || !event.modelId || event.metadata?._pricingMissing !== true) continue;
+
+      const pricing = await ctx.db
+        .query("aiPricing")
+        .withIndex("by_model", (q) => q.eq("providerId", event.providerId).eq("modelId", event.modelId!))
+        .first();
+      if (!pricing) continue;
+
+      const markup = await resolveAIMarkup(ctx, event.providerId, event.modelId);
+      const { totalCost, userTotalCost, breakdown } = calculateAICost(pricing.pricing, event.usage, markup);
+      const { _pricingMissing, ...metadata } = event.metadata as Record<string, unknown>;
+
+      await ctx.db.patch(event._id, {
+        amount: totalCost,
+        userAmount: userTotalCost,
+        markupMultiplier: markup !== 1 ? markup : undefined,
+        breakdown,
+        metadata: { ...metadata, _pricingBackfilledAt: Date.now() },
+      });
+      fixed++;
+    }
+
+    return {
+      continueCursor: hasMore ? String(events[batchSize]._creationTime) : null,
       isDone: !hasMore,
       processed: batch.length,
       fixed,
