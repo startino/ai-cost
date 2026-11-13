@@ -8,10 +8,6 @@ export const version0114 = query({
   handler: async () => "ai-cost@0.1.14",
 });
 
-// ============================================================================
-// Internal: Save cost event + attributions (used by addAICost/addToolCost)
-// ============================================================================
-
 export const saveCostEvent = internalMutation({
   args: {
     type: v.union(v.literal("ai"), v.literal("tool")),
@@ -45,10 +41,6 @@ export const saveCostEvent = internalMutation({
   },
 });
 
-// ============================================================================
-// AI cost helpers (used by addAICost/recalculateMissingPricingBatch)
-// ============================================================================
-
 const resolveAIMarkup = async (ctx: MutationCtx, providerId: string, modelId: string) => {
   const modelMarkup = await ctx.db
     .query("markupMultiplier")
@@ -72,7 +64,6 @@ const calculateAICost = (
   const MILLION = 1_000_000;
   const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
 
-  // promptTokens is TOTAL input tokens (includes cached). Subtract cached to avoid double-counting.
   const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
   const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
   const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
@@ -94,10 +85,6 @@ const calculateAICost = (
   };
 };
 
-// ============================================================================
-// Add AI Cost
-// ============================================================================
-
 export const addAICost = mutation({
   args: {
     usage: v.object({
@@ -115,14 +102,12 @@ export const addAICost = mutation({
   },
   returns: v.id("costEvents"),
   handler: async (ctx, args) => {
-    // Look up pricing
     const pricing = await ctx.db
       .query("aiPricing")
       .withIndex("by_model", (q) => q.eq("providerId", args.providerId).eq("modelId", args.modelId))
       .first();
 
     if (!pricing) {
-      // No pricing found — record event with zero cost rather than losing it
       console.warn(`[ai-cost] MISSING PRICING: provider='${args.providerId}' model='${args.modelId}' — recorded with $0 cost`);
       const eventId = await ctx.db.insert("costEvents", {
         type: "ai",
@@ -147,7 +132,6 @@ export const addAICost = mutation({
     const markup = args.markupMultiplier ?? (await resolveAIMarkup(ctx, args.providerId, args.modelId));
     const { totalCost, userTotalCost, breakdown } = calculateAICost(pricing.pricing, args.usage, markup);
 
-    // Insert cost event
     const eventId = await ctx.db.insert("costEvents", {
       type: "ai",
       providerId: args.providerId,
@@ -161,7 +145,6 @@ export const addAICost = mutation({
       metadata: args.metadata,
     });
 
-    // Insert attributions
     for (const attr of args.attributions) {
       await ctx.db.insert("costAttributions", {
         costEventId: eventId,
@@ -174,13 +157,9 @@ export const addAICost = mutation({
   },
 });
 
-// ============================================================================
-// Add Tool Cost
-// ============================================================================
-
 export const addToolCost = mutation({
   args: {
-    usage: v.any(), // ToolUsage union — validated at client level
+    usage: v.any(),
     providerId: v.string(),
     toolId: v.string(),
     attributions: v.array(v.object({ type: v.string(), id: v.string() })),
@@ -189,13 +168,11 @@ export const addToolCost = mutation({
   },
   returns: v.id("costEvents"),
   handler: async (ctx, args) => {
-    // Look up tool pricing
     let toolPricing = await ctx.db
       .query("toolsPricing")
       .withIndex("by_provider_and_tool", (q) => q.eq("providerId", args.providerId).eq("toolId", args.toolId))
       .first();
 
-    // Fallback: provider-only tool pricing
     if (!toolPricing) {
       toolPricing = await ctx.db
         .query("toolsPricing")
@@ -203,7 +180,6 @@ export const addToolCost = mutation({
         .first();
     }
 
-    // Fallback: AI pricing for token-based tool usage
     if (!toolPricing && args.usage?.type === "tokens") {
       const aiPricing = await ctx.db
         .query("aiPricing")
@@ -211,7 +187,6 @@ export const addToolCost = mutation({
         .first();
 
       if (aiPricing) {
-        // Use AI pricing for token-based tool cost
         const MILLION = 1_000_000;
         const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
         const usage = args.usage;
@@ -231,7 +206,6 @@ export const addToolCost = mutation({
 
         const amount = round8(inputCost + outputCost + (reasoningCost ?? 0) + (cacheReadCost ?? 0) + (cacheWriteCost ?? 0));
 
-        // Resolve markup
         let markup = args.markupMultiplier;
         if (markup === undefined) {
           const toolMarkup = await ctx.db
@@ -277,9 +251,6 @@ export const addToolCost = mutation({
       throw new Error(`No pricing found for provider '${args.providerId}' tool '${args.toolId}'.`);
     }
 
-    // Calculate tool cost using the pricing config
-    // This is a simplified inline version — the full calculation logic lives in shared.ts
-    // for use in the client. Here we handle the most common cases.
     const pricing = toolPricing.pricing as Record<string, unknown>;
     const usageData = args.usage as Record<string, unknown>;
     const usageType = usageData.type as string;
@@ -325,13 +296,10 @@ export const addToolCost = mutation({
         break;
       }
       default: {
-        // For compute, storage, bandwidth, tiered, composite, custom —
-        // the caller should use the client-side calculateToolCost and pass pre-calculated values
         throw new Error(`Tool cost type '${usageType}' must be calculated client-side via calculateToolCost(). Pass the result as metadata.`);
       }
     }
 
-    // Resolve markup
     let markup = args.markupMultiplier;
     if (markup === undefined) {
       const toolMarkupRows = await ctx.db
@@ -373,10 +341,6 @@ export const addToolCost = mutation({
   },
 });
 
-// ============================================================================
-// Add Pre-Calculated Cost (for complex pricing models calculated client-side)
-// ============================================================================
-
 export const addPreCalculatedCost = mutation({
   args: {
     type: v.union(v.literal("ai"), v.literal("tool")),
@@ -409,10 +373,6 @@ export const addPreCalculatedCost = mutation({
     return eventId;
   },
 });
-
-// ============================================================================
-// Query: Get costs by attribution (paginated)
-// ============================================================================
 
 export const getCostsByAttribute = query({
   args: {
@@ -448,9 +408,6 @@ export const getCostsByAttribute = query({
   handler: async (ctx, args) => {
     const { numItems, cursor } = args.paginationOpts;
 
-    // Manual cursor-based pagination using _creationTime
-    // The by_attribute index is [attributeType, attributeId, _creationTime]
-    // Upper bound: cursor (next page) takes priority over endTime (first page)
     const upperBound = cursor ?? args.endTime;
     const attributions = await ctx.db
       .query("costAttributions")
@@ -470,13 +427,11 @@ export const getCostsByAttribute = query({
     const hasMore = attributions.length > numItems;
     const pageAttributions = hasMore ? attributions.slice(0, numItems) : attributions;
 
-    // Fetch cost events for this page
     const events = await Promise.all(
       pageAttributions.map(async (attr) => {
         const event = await ctx.db.get(attr.costEventId);
         if (!event) return null;
 
-        // Fetch all attributions for this event
         const allAttrs = await ctx.db
           .query("costAttributions")
           .withIndex("by_costEventId", (q) => q.eq("costEventId", event._id))
@@ -497,10 +452,6 @@ export const getCostsByAttribute = query({
     };
   },
 });
-
-// ============================================================================
-// Query: List costs by attribution (non-paginated, limited)
-// ============================================================================
 
 export const listCostsByAttribute = query({
   args: {
@@ -563,10 +514,6 @@ export const listCostsByAttribute = query({
   },
 });
 
-// ============================================================================
-// Query: Get aggregated totals by attribution
-// ============================================================================
-
 export const getTotalByAttribute = query({
   args: {
     attributeType: v.string(),
@@ -618,10 +565,6 @@ export const getTotalByAttribute = query({
   },
 });
 
-// ============================================================================
-// Query: Get single cost event with attributions
-// ============================================================================
-
 export const getCostEvent = query({
   args: { id: v.id("costEvents") },
   returns: v.union(
@@ -659,10 +602,6 @@ export const getCostEvent = query({
   },
 });
 
-// ============================================================================
-// Query: Get distinct attribute values for a given type
-// ============================================================================
-
 export const getDistinctAttributeValues = query({
   args: {
     attributeType: v.string(),
@@ -680,7 +619,6 @@ export const getDistinctAttributeValues = query({
       return [...new Set(attributions.map((a) => a.attributeId))];
     }
 
-    // Filter to only events that also have the scope attribution
     const scopeAttrs = await ctx.db
       .query("costAttributions")
       .withIndex("by_attribute", (q) =>
@@ -693,10 +631,6 @@ export const getDistinctAttributeValues = query({
     return [...new Set(filtered.map((a) => a.attributeId))];
   },
 });
-
-// ============================================================================
-// Query: List costs matching multiple attribution filters (AND logic)
-// ============================================================================
 
 export const listCostsByMultipleAttributes = query({
   args: {
@@ -711,7 +645,6 @@ export const listCostsByMultipleAttributes = query({
 
     const [primaryFilter, ...restFilters] = args.filters;
 
-    // Build intersection sets from non-primary filters (indexed reads)
     const intersectionSets: Set<string>[] = [];
     for (const filter of restFilters) {
       const attrs = await ctx.db
@@ -728,8 +661,6 @@ export const listCostsByMultipleAttributes = query({
       intersectionSets.push(new Set(attrs.map((a) => a.costEventId as string)));
     }
 
-    // Scan primary filter's attributions in desc order (most recent first).
-    // Attribution creation order matches event creation order.
     const primaryAttrs = await ctx.db
       .query("costAttributions")
       .withIndex("by_attribute", (q) => {
@@ -743,7 +674,6 @@ export const listCostsByMultipleAttributes = query({
       .order("desc")
       .collect();
 
-    // Iterate in order, check intersection, fetch + enrich, stop at limit
     const events = [];
     const seen = new Set<string>();
 
@@ -774,10 +704,6 @@ export const listCostsByMultipleAttributes = query({
   },
 });
 
-// ============================================================================
-// Migration: Recalculate costs for events affected by cached token double-count
-// ============================================================================
-
 export const recalculateCachedCostsBatch = mutation({
   args: {
     cursor: v.union(v.string(), v.null()),
@@ -794,7 +720,6 @@ export const recalculateCachedCostsBatch = mutation({
     const MILLION = 1_000_000;
     const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
 
-    // Scan costEvents table in order
     let query = ctx.db.query("costEvents").order("asc");
     if (args.cursor) {
       const cursorTime = parseFloat(args.cursor);
@@ -821,7 +746,6 @@ export const recalculateCachedCostsBatch = mutation({
 
       if (!usage?.cachedInputTokens || usage.cachedInputTokens === 0) continue;
 
-      // Look up pricing for this model
       const pricing = event.modelId
         ? await ctx.db
             .query("aiPricing")
@@ -836,7 +760,6 @@ export const recalculateCachedCostsBatch = mutation({
       const prices = pricing.pricing;
       const markup = event.markupMultiplier ?? 1;
 
-      // Recalculate with fix: subtract cached from prompt
       const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
       const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
       const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
@@ -848,7 +771,6 @@ export const recalculateCachedCostsBatch = mutation({
       const totalCost = round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost);
       const userTotalCost = round8(totalCost * markup);
 
-      // Skip if already correct (idempotent)
       if (event.amount === totalCost && event.userAmount === userTotalCost) continue;
 
       await ctx.db.patch(event._id, {
@@ -866,7 +788,6 @@ export const recalculateCachedCostsBatch = mutation({
 
     const lastEvent = batch[batch.length - 1];
     return {
-      // Use _creationTime + small epsilon to avoid re-processing the last event
       continueCursor: hasMore && lastEvent ? String(lastEvent._creationTime + 0.001) : null,
       isDone: !hasMore,
       processed: batch.length,
@@ -874,10 +795,6 @@ export const recalculateCachedCostsBatch = mutation({
     };
   },
 });
-
-// ============================================================================
-// Migration: Recalculate costs for events recorded while pricing was missing
-// ============================================================================
 
 export const recalculateMissingPricingBatch = mutation({
   args: {
@@ -935,10 +852,6 @@ export const recalculateMissingPricingBatch = mutation({
   },
 });
 
-// ============================================================================
-// Mutation: Delete cost event and its attributions
-// ============================================================================
-
 export const deleteCostEvent = mutation({
   args: { id: v.id("costEvents") },
   returns: v.null(),
@@ -956,10 +869,6 @@ export const deleteCostEvent = mutation({
     return null;
   },
 });
-
-// ============================================================================
-// Mutation: Delete all costs for an attribution (cascade)
-// ============================================================================
 
 export const deleteCostsByAttribute = mutation({
   args: {
@@ -979,7 +888,6 @@ export const deleteCostsByAttribute = mutation({
     let deleted = 0;
 
     for (const eventId of eventIds) {
-      // Delete all attributions for this event
       const allAttrs = await ctx.db
         .query("costAttributions")
         .withIndex("by_costEventId", (q) => q.eq("costEventId", eventId))

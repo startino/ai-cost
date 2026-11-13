@@ -1,9 +1,5 @@
 import type { Pricing, ProviderMarkup, ModelMarkup, ToolMarkup } from "../validators.js";
 
-// ============================================================================
-// Cost Calculation Results
-// ============================================================================
-
 export type CalculatedCosts = {
   promptTokensCost: number;
   completionTokensCost: number;
@@ -29,10 +25,6 @@ export type CalculatedToolCost = {
   costForUser: { amount: number; currency: string; markupMultiplier?: number; breakdown?: ToolCostBreakdown };
 };
 
-// ============================================================================
-// models.dev API Types
-// ============================================================================
-
 export type ModelsDevModel = {
   name?: string;
   cost?: {
@@ -55,19 +47,11 @@ export type ModelsDevProvider = {
 
 export type ModelsDevApiResponse = Record<string, ModelsDevProvider>;
 
-// ============================================================================
-// Component Options
-// ============================================================================
-
 export type AICostOptions = {
   providerMarkupMultiplier?: ProviderMarkup[];
   modelMarkupMultiplier?: ModelMarkup[];
   toolMarkupMultiplier?: ToolMarkup[];
 };
-
-// ============================================================================
-// Query Results
-// ============================================================================
 
 export type CostEvent = {
   _id: string;

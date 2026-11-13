@@ -1,10 +1,6 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server.js";
 
-// ============================================================================
-// Queries
-// ============================================================================
-
 export const getMarkupMultipliers = query({
   args: {},
   handler: async (ctx) => {
@@ -26,7 +22,6 @@ export const getMarkupMultiplier = query({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
-    // Priority: model > tool > provider > 0
     if (args.modelId) {
       const modelMarkups = await ctx.db
         .query("markupMultiplier")
@@ -60,10 +55,6 @@ export const getMarkupMultiplierById = query({
     return await ctx.db.get(args.id);
   },
 });
-
-// ============================================================================
-// Mutations
-// ============================================================================
 
 export const upsertProviderMarkup = mutation({
   args: {

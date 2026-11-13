@@ -9,36 +9,21 @@ import type {
 } from "./validators.js";
 import type { CalculatedCosts, CalculatedToolCost, ToolCostBreakdown, ModelsDevApiResponse, ModelsDevModel } from "./client/types.js";
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 export const MILLION = 1_000_000;
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 
-// ============================================================================
-// Precision
-// ============================================================================
-
 const round8 = (value: number): number => Math.round(value * 1e8) / 1e8;
-
-// ============================================================================
-// AI Cost Calculation
-// ============================================================================
 
 export const calculateCosts = (usage: Usage, pricing: Pricing): CalculatedCosts => {
   const { pricing: prices } = pricing;
 
-  // promptTokens is TOTAL input tokens (includes cached). Subtract cached to avoid double-counting.
   const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
   const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
   const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
 
-  // Reasoning tokens bill at output rate when no separate reasoning price exists
   const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
   const reasoningTokensCost = ((usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
 
-  // Cached input tokens default to 25% of input price
   const cacheReadPrice = prices.cache_read ?? (prices.input || 0) * 0.25;
   const cachedInputTokensCost = ((usage.cachedInputTokens || 0) / MILLION) * cacheReadPrice;
 
@@ -60,10 +45,6 @@ export const calculateUserCosts = (costs: CalculatedCosts, markupMultiplier: num
   cachedInputTokensCost: round8(costs.cachedInputTokensCost * markupMultiplier),
   totalCost: round8(costs.totalCost * markupMultiplier),
 });
-
-// ============================================================================
-// Tool Cost Calculation
-// ============================================================================
 
 export const calculateToolCost = (
   usage: ToolUsage,
@@ -196,10 +177,6 @@ export const calculateToolCost = (
   };
 };
 
-// ============================================================================
-// Tool Cost from AI Pricing (fallback for LLM-based tools)
-// ============================================================================
-
 export const calculateToolCostFromTokenPricing = (
   usage: ToolUsage,
   pricing: Pricing,
@@ -241,10 +218,6 @@ export const calculateToolCostFromTokenPricing = (
     },
   };
 };
-
-// ============================================================================
-// Pricing Data Parsing (models.dev)
-// ============================================================================
 
 export const parseModelPricing = (
   providerId: string,
@@ -301,10 +274,6 @@ export const hasPricingChanged = (
   existing.modelName !== updated.modelName ||
   existing.providerName !== updated.providerName;
 
-// ============================================================================
-// Markup Resolution
-// ============================================================================
-
 export const resolveMarkupMultiplier = ({
   providerId,
   modelId,
@@ -320,7 +289,6 @@ export const resolveMarkupMultiplier = ({
   modelMarkups: ModelMarkup[];
   toolMarkups: ToolMarkup[];
 }): number => {
-  // Priority: model-specific > tool-specific > provider-specific > 0
   if (modelId) {
     const match = modelMarkups.find((m) => m.providerId === providerId && m.modelId === modelId);
     if (match) return match.markupMultiplier;
