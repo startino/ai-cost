@@ -1,19 +1,11 @@
 import { v, type Infer } from "convex/values";
 
-// ============================================================================
-// Attribution
-// ============================================================================
-
 export const vAttribution = v.object({
   type: v.string(),
   id: v.string(),
 });
 
 export type Attribution = Infer<typeof vAttribution>;
-
-// ============================================================================
-// AI Usage
-// ============================================================================
 
 export const vUsage = v.object({
   promptTokens: v.number(),
@@ -24,10 +16,6 @@ export const vUsage = v.object({
 });
 
 export type Usage = Infer<typeof vUsage>;
-
-// ============================================================================
-// Tool Usage (10 pricing models)
-// ============================================================================
 
 export const vToolUsage = v.union(
   v.object({
@@ -97,10 +85,6 @@ export const vToolUsage = v.union(
 );
 
 export type ToolUsage = Infer<typeof vToolUsage>;
-
-// ============================================================================
-// Tool Pricing
-// ============================================================================
 
 export const vToolPricing = v.union(
   v.object({
@@ -198,10 +182,6 @@ export const vToolLimits = v.optional(
 
 export type ToolLimits = Infer<typeof vToolLimits>;
 
-// ============================================================================
-// AI Pricing
-// ============================================================================
-
 export const vPricingData = v.object({
   input: v.number(),
   output: v.number(),
@@ -226,10 +206,6 @@ export const vPricing = v.object({
 });
 
 export type Pricing = Infer<typeof vPricing>;
-
-// ============================================================================
-// Cost Validators
-// ============================================================================
 
 export const vCost = v.object({
   promptTokensCost: v.number(),
@@ -388,10 +364,6 @@ export const vToolCostForUser = v.object({
 
 export type ToolCostForUser = Infer<typeof vToolCostForUser>;
 
-// ============================================================================
-// Markup Validators
-// ============================================================================
-
 export const vProviderMarkup = v.object({
   scope: v.literal("provider"),
   providerId: v.string(),
@@ -425,10 +397,6 @@ export const vMarkupMultiplierConfig = v.union(
 );
 
 export type MarkupMultiplierConfig = Infer<typeof vMarkupMultiplierConfig>;
-
-// ============================================================================
-// Add Cost Args
-// ============================================================================
 
 export const vAddAICostArgs = v.object({
   usage: vUsage,

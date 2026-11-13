@@ -1,7 +1,6 @@
 import type { GenericActionCtx, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 
-// Re-export types and calculation functions
 export type {
   CalculatedCosts,
   CalculatedToolCost,
@@ -65,19 +64,11 @@ export {
   vToolLimits,
 } from "../validators.js";
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export type { ComponentApi } from "../component/_generated/component.js";
 
 type RunMutationCtx = { runMutation: GenericMutationCtx<never>["runMutation"] };
 type RunQueryCtx = { runQuery: GenericQueryCtx<never>["runQuery"] };
 type RunActionCtx = { runAction: GenericActionCtx<never>["runAction"] };
-
-// ============================================================================
-// AICost — Main client class
-// ============================================================================
 
 export class AICost {
   private component: ComponentApi;
@@ -85,10 +76,6 @@ export class AICost {
   constructor(component: ComponentApi) {
     this.component = component;
   }
-
-  // ==========================================================================
-  // Cost Tracking
-  // ==========================================================================
 
   async addAICost(
     ctx: RunMutationCtx,
@@ -137,10 +124,6 @@ export class AICost {
   ) {
     return await ctx.runMutation(this.component.costs.addPreCalculatedCost, args);
   }
-
-  // ==========================================================================
-  // Cost Queries
-  // ==========================================================================
 
   async getCostsByAttribute(
     ctx: RunQueryCtx,
@@ -212,10 +195,6 @@ export class AICost {
     return await ctx.runMutation(this.component.costs.recalculateMissingPricingBatch, args);
   }
 
-  // ==========================================================================
-  // Pricing
-  // ==========================================================================
-
   async getPricing(ctx: RunQueryCtx, args: { providerId: string; modelId: string }) {
     return await ctx.runQuery(this.component.pricing.getPricing, args);
   }
@@ -247,10 +226,6 @@ export class AICost {
   async updatePricingData(ctx: RunActionCtx, args?: { apiUrl?: string; apiKey?: string }) {
     return await ctx.runAction(this.component.pricing.updatePricingData, args ?? {});
   }
-
-  // ==========================================================================
-  // Markup
-  // ==========================================================================
 
   async getMarkupMultipliers(ctx: RunQueryCtx) {
     return await ctx.runQuery(this.component.markup.getMarkupMultipliers, {});
@@ -286,13 +261,8 @@ export class AICost {
     return await ctx.runMutation(this.component.markup.deleteMarkup, args);
   }
 
-  // ==========================================================================
-  // Client API — export component functions for direct use in Convex files
-  // ==========================================================================
-
   clientApi() {
     return {
-      // Costs
       addAICost: this.component.costs.addAICost,
       addToolCost: this.component.costs.addToolCost,
       addPreCalculatedCost: this.component.costs.addPreCalculatedCost,
@@ -305,7 +275,6 @@ export class AICost {
       deleteCostEvent: this.component.costs.deleteCostEvent,
       deleteCostsByAttribute: this.component.costs.deleteCostsByAttribute,
 
-      // Pricing
       getPricing: this.component.pricing.getPricing,
       getAllPricing: this.component.pricing.getAllPricing,
       getPricingByProvider: this.component.pricing.getPricingByProvider,
@@ -315,7 +284,6 @@ export class AICost {
       getToolPricingByProvider: this.component.pricing.getToolPricingByProvider,
       updatePricingData: this.component.pricing.updatePricingData,
 
-      // Markup
       getMarkupMultipliers: this.component.markup.getMarkupMultipliers,
       getMarkupMultiplier: this.component.markup.getMarkupMultiplier,
       getMarkupMultiplierById: this.component.markup.getMarkupMultiplierById,

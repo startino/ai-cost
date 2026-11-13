@@ -2,37 +2,25 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  // ========================================================================
-  // Cost Events — the core cost record (what happened)
-  // ========================================================================
   costEvents: defineTable({
     type: v.union(v.literal("ai"), v.literal("tool")),
     providerId: v.string(),
     modelId: v.optional(v.string()),
     toolId: v.optional(v.string()),
 
-    // Unified cost (raw)
     amount: v.number(),
     currency: v.string(),
 
-    // User-facing cost (with markup)
     userAmount: v.number(),
     markupMultiplier: v.optional(v.number()),
 
-    // Usage details — stored for audit/breakdown
-    // AI: { promptTokens, completionTokens, totalTokens, ... }
-    // Tool: { type, credits|tokens|requests|..., ... }
     usage: v.any(),
 
-    // Cost breakdown details (varies by type)
     breakdown: v.optional(v.any()),
 
     metadata: v.optional(v.any()),
   }),
 
-  // ========================================================================
-  // Cost Attributions — who/what this cost is associated with
-  // ========================================================================
   costAttributions: defineTable({
     costEventId: v.id("costEvents"),
     attributeType: v.string(),
@@ -41,9 +29,6 @@ export default defineSchema({
     .index("by_costEventId", ["costEventId"])
     .index("by_attribute", ["attributeType", "attributeId"]),
 
-  // ========================================================================
-  // AI Pricing — model pricing data from models.dev API
-  // ========================================================================
   aiPricing: defineTable({
     providerId: v.string(),
     providerName: v.string(),
@@ -65,9 +50,6 @@ export default defineSchema({
     .index("by_model", ["providerId", "modelId"])
     .index("by_provider", ["providerId"]),
 
-  // ========================================================================
-  // Tool Pricing — tool-specific pricing configurations
-  // ========================================================================
   toolsPricing: defineTable({
     providerId: v.string(),
     providerName: v.string(),
@@ -80,9 +62,6 @@ export default defineSchema({
     .index("by_provider", ["providerId"])
     .index("by_provider_and_tool", ["providerId", "toolId"]),
 
-  // ========================================================================
-  // Markup Multipliers — provider/model/tool level markup configs
-  // ========================================================================
   markupMultiplier: defineTable(
     v.union(
       v.object({

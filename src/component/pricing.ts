@@ -2,10 +2,6 @@ import { v } from "convex/values";
 import { query, action, internalMutation } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 
-// ============================================================================
-// Queries
-// ============================================================================
-
 export const getPricing = query({
   args: { providerId: v.string(), modelId: v.string() },
   returns: v.union(
@@ -66,28 +62,21 @@ export const searchPricingByModelName = query({
   },
 });
 
-// ============================================================================
-// Tool Pricing Queries
-// ============================================================================
-
 export const getToolPricing = query({
   args: { providerId: v.string(), toolId: v.string() },
   handler: async (ctx, args) => {
-    // Exact match first
     const exact = await ctx.db
       .query("toolsPricing")
       .withIndex("by_provider_and_tool", (q) => q.eq("providerId", args.providerId).eq("toolId", args.toolId))
       .first();
     if (exact) return exact;
 
-    // Provider-only fallback
     const providerOnly = await ctx.db
       .query("toolsPricing")
       .withIndex("by_provider", (q) => q.eq("providerId", args.providerId))
       .first();
     if (providerOnly) return providerOnly;
 
-    // AI pricing fallback for LLM-based tools
     const aiPricing = await ctx.db
       .query("aiPricing")
       .withIndex("by_model", (q) => q.eq("providerId", args.providerId).eq("modelId", args.toolId))
@@ -112,10 +101,6 @@ export const getToolPricingByProvider = query({
       .collect();
   },
 });
-
-// ============================================================================
-// Tool Pricing Mutations
-// ============================================================================
 
 export const upsertToolPricing = internalMutation({
   args: {
@@ -151,10 +136,6 @@ export const deleteToolPricing = internalMutation({
     if (existing) await ctx.db.delete(existing._id);
   },
 });
-
-// ============================================================================
-// Update AI Pricing from models.dev
-// ============================================================================
 
 export const updatePricingTable = internalMutation({
   args: {
@@ -230,7 +211,6 @@ export const updatePricingData = action({
 
     const data = await response.json();
 
-    // Parse the models.dev response
     const pricingUpdates: Array<{
       providerId: string;
       providerName: string;
@@ -268,7 +248,6 @@ export const updatePricingData = action({
       }
     }
 
-    // Batch into chunks of 100 to stay within Convex limits
     const BATCH_SIZE = 100;
     for (let i = 0; i < pricingUpdates.length; i += BATCH_SIZE) {
       const batch = pricingUpdates.slice(i, i + BATCH_SIZE);
