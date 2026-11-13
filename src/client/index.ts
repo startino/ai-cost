@@ -181,13 +181,6 @@ export class AICost {
     return await ctx.runMutation(this.component.costs.deleteCostsByAttribute, args);
   }
 
-  async recalculateCachedCostsBatch(
-    ctx: RunMutationCtx,
-    args: { cursor: string | null; batchSize?: number },
-  ) {
-    return await ctx.runMutation(this.component.costs.recalculateCachedCostsBatch, args);
-  }
-
   async recalculateMissingPricingBatch(
     ctx: RunMutationCtx,
     args: { cursor: string | null; batchSize?: number },

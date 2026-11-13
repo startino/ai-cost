@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { query, action, internalMutation } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
+import { vPricing } from "../validators.js";
+import { hasPricingChanged, MODELS_DEV_API_URL, parseModelsDevResponse } from "../shared.js";
+import type { ModelsDevApiResponse } from "../client/types.js";
 
 export const getPricing = query({
   args: { providerId: v.string(), modelId: v.string() },
@@ -139,23 +142,7 @@ export const deleteToolPricing = internalMutation({
 
 export const updatePricingTable = internalMutation({
   args: {
-    pricingData: v.array(
-      v.object({
-        providerId: v.string(),
-        providerName: v.string(),
-        modelId: v.string(),
-        modelName: v.string(),
-        pricing: v.object({
-          input: v.number(),
-          output: v.number(),
-          reasoning: v.optional(v.number()),
-          cache_read: v.optional(v.number()),
-          cache_write: v.optional(v.number()),
-        }),
-        limits: v.object({ context: v.number(), output: v.number() }),
-        lastUpdated: v.number(),
-      }),
-    ),
+    pricingData: v.array(vPricing),
   },
   handler: async (ctx, args) => {
     let inserted = 0;
@@ -169,19 +156,8 @@ export const updatePricingTable = internalMutation({
         .first();
 
       if (existing) {
-        const changed =
-          existing.pricing.input !== data.pricing.input ||
-          existing.pricing.output !== data.pricing.output ||
-          existing.pricing.reasoning !== data.pricing.reasoning ||
-          existing.pricing.cache_read !== data.pricing.cache_read ||
-          existing.pricing.cache_write !== data.pricing.cache_write ||
-          existing.limits.context !== data.limits.context ||
-          existing.limits.output !== data.limits.output ||
-          existing.modelName !== data.modelName ||
-          existing.providerName !== data.providerName;
-
-        if (changed) {
-          await ctx.db.patch(existing._id, data);
+        if (hasPricingChanged(existing, data)) {
+          await ctx.db.replace(existing._id, data);
           updated++;
         } else {
           unchanged++;
@@ -202,51 +178,14 @@ export const updatePricingData = action({
     apiKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const url = args.apiUrl || "https://models.dev/api.json";
+    const url = args.apiUrl || MODELS_DEV_API_URL;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (args.apiKey) headers["Authorization"] = `Bearer ${args.apiKey}`;
 
     const response = await fetch(url, { headers });
     if (!response.ok) throw new Error(`Failed to fetch pricing data: ${response.status}`);
 
-    const data = await response.json();
-
-    const pricingUpdates: Array<{
-      providerId: string;
-      providerName: string;
-      modelId: string;
-      modelName: string;
-      pricing: { input: number; output: number; reasoning?: number; cache_read?: number; cache_write?: number };
-      limits: { context: number; output: number };
-      lastUpdated: number;
-    }> = [];
-
-    for (const [providerId, providerData] of Object.entries(data as Record<string, { name?: string; models?: Record<string, { name?: string; cost?: { input?: number; output?: number; reasoning?: number; cache_read?: number; cache_write?: number }; limit?: { context?: number; output?: number } }> }>)) {
-      if (!providerData?.models) continue;
-      const providerName = providerData.name || providerId;
-
-      for (const [modelId, modelData] of Object.entries(providerData.models)) {
-        if (!modelData) continue;
-        pricingUpdates.push({
-          providerId,
-          providerName,
-          modelId,
-          modelName: modelData.name || modelId,
-          pricing: {
-            input: modelData.cost?.input || 0,
-            output: modelData.cost?.output || 0,
-            reasoning: modelData.cost?.reasoning,
-            cache_read: modelData.cost?.cache_read,
-            cache_write: modelData.cost?.cache_write,
-          },
-          limits: {
-            context: modelData.limit?.context || 0,
-            output: modelData.limit?.output || 0,
-          },
-          lastUpdated: Date.now(),
-        });
-      }
-    }
+    const pricingUpdates = parseModelsDevResponse((await response.json()) as ModelsDevApiResponse);
 
     const BATCH_SIZE = 100;
     for (let i = 0; i < pricingUpdates.length; i += BATCH_SIZE) {

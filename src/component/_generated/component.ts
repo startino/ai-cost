@@ -210,18 +210,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      recalculateCachedCostsBatch: FunctionReference<
-        "mutation",
-        "internal",
-        { batchSize?: number; cursor: string | null },
-        {
-          continueCursor: string | null;
-          fixed: number;
-          isDone: boolean;
-          processed: number;
-        },
-        Name
-      >;
       recalculateMissingPricingBatch: FunctionReference<
         "mutation",
         "internal",
@@ -234,7 +222,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
-      version0114: FunctionReference<"query", "internal", {}, string, Name>;
+      version0115: FunctionReference<"query", "internal", {}, string, Name>;
     };
     markup: {
       deleteMarkup: FunctionReference<

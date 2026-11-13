@@ -182,13 +182,26 @@ export const vToolLimits = v.optional(
 
 export type ToolLimits = Infer<typeof vToolLimits>;
 
-export const vPricingData = v.object({
+export const vContextTierPricing = v.object({
+  above_context_tokens: v.number(),
   input: v.number(),
   output: v.number(),
   reasoning: v.optional(v.number()),
   cache_read: v.optional(v.number()),
   cache_write: v.optional(v.number()),
 });
+
+export const vPricingData = v.object({
+  input: v.number(),
+  output: v.number(),
+  reasoning: v.optional(v.number()),
+  cache_read: v.optional(v.number()),
+  cache_write: v.optional(v.number()),
+  context_tiers: v.optional(v.array(vContextTierPricing)),
+});
+
+export type PricingData = Infer<typeof vPricingData>;
+export type ContextTierPricing = Infer<typeof vContextTierPricing>;
 
 export const vLimits = v.object({
   context: v.number(),
