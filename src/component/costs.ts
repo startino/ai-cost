@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, type MutationCtx } from "./_generated/server.js";
 import type { Doc } from "./_generated/dataModel.js";
+import { calculateTokenCosts, type TokenUsage } from "../shared.js";
 
-export const version0114 = query({
+export const version0115 = query({
   args: {},
   returns: v.string(),
-  handler: async () => "ai-cost@0.1.14",
+  handler: async () => "ai-cost@0.1.15",
 });
 
 export const saveCostEvent = internalMutation({
@@ -56,33 +57,9 @@ const resolveAIMarkup = async (ctx: MutationCtx, providerId: string, modelId: st
   return providerMarkup?.markupMultiplier ?? 1;
 };
 
-const calculateAICost = (
-  prices: Doc<"aiPricing">["pricing"],
-  usage: { promptTokens?: number; completionTokens?: number; reasoningTokens?: number; cachedInputTokens?: number },
-  markup: number,
-) => {
-  const MILLION = 1_000_000;
-  const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
-
-  const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
-  const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
-  const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
-  const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
-  const reasoningTokensCost = ((usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
-  const cacheReadPrice = prices.cache_read ?? (prices.input || 0) * 0.25;
-  const cachedInputTokensCost = ((usage.cachedInputTokens || 0) / MILLION) * cacheReadPrice;
-
-  const totalCost = round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost);
-  return {
-    totalCost,
-    userTotalCost: round8(totalCost * markup),
-    breakdown: {
-      promptTokensCost: round8(promptTokensCost),
-      completionTokensCost: round8(completionTokensCost),
-      reasoningTokensCost: round8(reasoningTokensCost),
-      cachedInputTokensCost: round8(cachedInputTokensCost),
-    },
-  };
+const calculateAICost = (prices: Doc<"aiPricing">["pricing"], usage: TokenUsage, markup: number) => {
+  const { totalCost, ...breakdown } = calculateTokenCosts(prices, usage);
+  return { totalCost, userTotalCost: Math.round(totalCost * markup * 1e8) / 1e8, breakdown };
 };
 
 export const addAICost = mutation({
@@ -701,98 +678,6 @@ export const listCostsByMultipleAttributes = query({
     }
 
     return events;
-  },
-});
-
-export const recalculateCachedCostsBatch = mutation({
-  args: {
-    cursor: v.union(v.string(), v.null()),
-    batchSize: v.optional(v.number()),
-  },
-  returns: v.object({
-    continueCursor: v.union(v.string(), v.null()),
-    isDone: v.boolean(),
-    processed: v.number(),
-    fixed: v.number(),
-  }),
-  handler: async (ctx, args) => {
-    const batchSize = args.batchSize ?? 100;
-    const MILLION = 1_000_000;
-    const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
-
-    let query = ctx.db.query("costEvents").order("asc");
-    if (args.cursor) {
-      const cursorTime = parseFloat(args.cursor);
-      query = ctx.db
-        .query("costEvents")
-        .filter((q) => q.gte(q.field("_creationTime"), cursorTime))
-        .order("asc") as typeof query;
-    }
-    const events = await query.take(batchSize + 1);
-
-    const hasMore = events.length > batchSize;
-    const batch = hasMore ? events.slice(0, batchSize) : events;
-    let fixed = 0;
-
-    for (const event of batch) {
-      if (event.type !== "ai") continue;
-
-      const usage = event.usage as {
-        promptTokens?: number;
-        completionTokens?: number;
-        reasoningTokens?: number;
-        cachedInputTokens?: number;
-      } | undefined;
-
-      if (!usage?.cachedInputTokens || usage.cachedInputTokens === 0) continue;
-
-      const pricing = event.modelId
-        ? await ctx.db
-            .query("aiPricing")
-            .withIndex("by_model", (q) =>
-              q.eq("providerId", event.providerId).eq("modelId", event.modelId!),
-            )
-            .first()
-        : null;
-
-      if (!pricing) continue;
-
-      const prices = pricing.pricing;
-      const markup = event.markupMultiplier ?? 1;
-
-      const nonCachedPromptTokens = (usage.promptTokens || 0) - (usage.cachedInputTokens || 0);
-      const promptTokensCost = (nonCachedPromptTokens / MILLION) * (prices.input || 0);
-      const completionTokensCost = ((usage.completionTokens || 0) / MILLION) * (prices.output || 0);
-      const reasoningPrice = prices.reasoning ?? prices.output ?? 0;
-      const reasoningTokensCost = ((usage.reasoningTokens || 0) / MILLION) * reasoningPrice;
-      const cacheReadPrice = prices.cache_read ?? (prices.input || 0) * 0.25;
-      const cachedInputTokensCost = ((usage.cachedInputTokens || 0) / MILLION) * cacheReadPrice;
-
-      const totalCost = round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost);
-      const userTotalCost = round8(totalCost * markup);
-
-      if (event.amount === totalCost && event.userAmount === userTotalCost) continue;
-
-      await ctx.db.patch(event._id, {
-        amount: totalCost,
-        userAmount: userTotalCost,
-        breakdown: {
-          promptTokensCost: round8(promptTokensCost),
-          completionTokensCost: round8(completionTokensCost),
-          reasoningTokensCost: round8(reasoningTokensCost),
-          cachedInputTokensCost: round8(cachedInputTokensCost),
-        },
-      });
-      fixed++;
-    }
-
-    const lastEvent = batch[batch.length - 1];
-    return {
-      continueCursor: hasMore && lastEvent ? String(lastEvent._creationTime + 0.001) : null,
-      isDone: !hasMore,
-      processed: batch.length,
-      fixed,
-    };
   },
 });
 

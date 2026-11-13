@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { vPricingData } from "../validators.js";
 
 export default defineSchema({
   costEvents: defineTable({
@@ -34,13 +35,7 @@ export default defineSchema({
     providerName: v.string(),
     modelId: v.string(),
     modelName: v.string(),
-    pricing: v.object({
-      input: v.number(),
-      output: v.number(),
-      reasoning: v.optional(v.number()),
-      cache_read: v.optional(v.number()),
-      cache_write: v.optional(v.number()),
-    }),
+    pricing: vPricingData,
     limits: v.object({
       context: v.number(),
       output: v.number(),
