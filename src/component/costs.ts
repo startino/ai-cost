@@ -70,6 +70,7 @@ export const addAICost = mutation({
       totalTokens: v.number(),
       reasoningTokens: v.optional(v.number()),
       cachedInputTokens: v.optional(v.number()),
+      cacheWriteTokens: v.optional(v.number()),
     }),
     modelId: v.string(),
     providerId: v.string(),

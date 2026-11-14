@@ -80,7 +80,7 @@ export class AICost {
   async addAICost(
     ctx: RunMutationCtx,
     args: {
-      usage: { promptTokens: number; completionTokens: number; totalTokens: number; reasoningTokens?: number; cachedInputTokens?: number };
+      usage: { promptTokens: number; completionTokens: number; totalTokens: number; reasoningTokens?: number; cachedInputTokens?: number; cacheWriteTokens?: number };
       modelId: string;
       providerId: string;
       attributions: Array<{ type: string; id: string }>;

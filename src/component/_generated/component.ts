@@ -35,6 +35,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           providerId: string;
           usage: {
             cachedInputTokens?: number;
+            cacheWriteTokens?: number;
             completionTokens: number;
             promptTokens: number;
             reasoningTokens?: number;

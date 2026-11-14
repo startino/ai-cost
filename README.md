@@ -100,6 +100,7 @@ await costs.addAICost(ctx, {
     totalTokens: 1500,
     reasoningTokens: 200,      // optional
     cachedInputTokens: 100,    // optional
+    cacheWriteTokens: 50,
   },
   modelId: "gpt-4",
   providerId: "openai",
@@ -115,7 +116,7 @@ await costs.addAICost(ctx, {
 
 Token counts follow the OpenAI usage format:
 
-- `promptTokens` includes `cachedInputTokens`. Cached tokens are charged at the `cache_read` price.
+- `promptTokens` includes both `cachedInputTokens` and `cacheWriteTokens`. Cache reads are charged at the `cache_read` price. Cache writes are charged at the `cache_write` price, or at the normal `input` price when no separate cache-write price exists.
 - `completionTokens` includes `reasoningTokens`. Reasoning tokens are charged at the `reasoning` price, or at the `output` price when the model has no `reasoning` price.
 
 ### Track tool costs
