@@ -6,7 +6,7 @@ import { calculateTokenCosts, type TokenUsage } from "../shared.js";
 export const version0115 = query({
   args: {},
   returns: v.string(),
-  handler: async () => "ai-cost@0.1.15",
+  handler: async () => "ai-cost@0.1.15-alpha.1",
 });
 
 export const saveCostEvent = internalMutation({
