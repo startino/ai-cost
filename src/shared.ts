@@ -4,7 +4,6 @@ import type {
   ToolMarkup,
   Pricing,
   PricingData,
-  ContextTierPricing,
   ToolPricing,
   ToolUsage,
   Usage,
@@ -23,34 +22,16 @@ export type TokenUsage = {
   cachedInputTokens?: number;
 };
 
-export const selectTokenRates = (prices: PricingData, promptTokens: number) => {
-  const contextTier = (prices.context_tiers ?? [])
-    .filter((tier) => promptTokens > tier.above_context_tokens)
-    .reduce<ContextTierPricing | undefined>(
-      (highest, tier) => (highest && highest.above_context_tokens >= tier.above_context_tokens ? highest : tier),
-      undefined,
-    );
-  if (!contextTier) return prices;
-  return {
-    input: contextTier.input,
-    output: contextTier.output,
-    reasoning: contextTier.reasoning ?? prices.reasoning,
-    cache_read: contextTier.cache_read ?? prices.cache_read,
-    cache_write: contextTier.cache_write ?? prices.cache_write,
-  };
-};
-
 export const calculateTokenCosts = (prices: PricingData, usage: TokenUsage): CalculatedCosts => {
   const promptTokens = usage.promptTokens || 0;
   const cachedInputTokens = usage.cachedInputTokens || 0;
   const completionTokens = usage.completionTokens || 0;
   const reasoningTokens = Math.min(usage.reasoningTokens || 0, completionTokens);
-  const rates = selectTokenRates(prices, promptTokens);
 
-  const promptTokensCost = ((promptTokens - cachedInputTokens) / MILLION) * (rates.input || 0);
-  const completionTokensCost = ((completionTokens - reasoningTokens) / MILLION) * (rates.output || 0);
-  const reasoningTokensCost = (reasoningTokens / MILLION) * (rates.reasoning ?? rates.output ?? 0);
-  const cachedInputTokensCost = (cachedInputTokens / MILLION) * (rates.cache_read ?? (rates.input || 0) * 0.25);
+  const promptTokensCost = ((promptTokens - cachedInputTokens) / MILLION) * (prices.input || 0);
+  const completionTokensCost = ((completionTokens - reasoningTokens) / MILLION) * (prices.output || 0);
+  const reasoningTokensCost = (reasoningTokens / MILLION) * (prices.reasoning ?? prices.output ?? 0);
+  const cachedInputTokensCost = (cachedInputTokens / MILLION) * (prices.cache_read ?? (prices.input || 0) * 0.25);
 
   return {
     promptTokensCost: round8(promptTokensCost),
@@ -245,22 +226,6 @@ export const calculateToolCostFromTokenPricing = (
   };
 };
 
-const parseContextTiers = (model: ModelsDevModel): ContextTierPricing[] | undefined => {
-  const tiers = (model.cost?.tiers ?? []).flatMap((tier) =>
-    tier.tier?.type === "context" && typeof tier.tier.size === "number" && typeof tier.input === "number" && typeof tier.output === "number"
-      ? [{
-          above_context_tokens: tier.tier.size,
-          input: tier.input,
-          output: tier.output,
-          reasoning: tier.reasoning,
-          cache_read: tier.cache_read,
-          cache_write: tier.cache_write,
-        }]
-      : [],
-  );
-  return tiers.length > 0 ? tiers : undefined;
-};
-
 export const parseModelPricing = (
   providerId: string,
   providerName: string,
@@ -277,7 +242,6 @@ export const parseModelPricing = (
     reasoning: model.cost?.reasoning,
     cache_read: model.cost?.cache_read,
     cache_write: model.cost?.cache_write,
-    context_tiers: parseContextTiers(model),
   },
   limits: {
     context: model.limit?.context || 0,
@@ -303,17 +267,6 @@ export const parseModelsDevResponse = (
   return results;
 };
 
-const contextTierFields = ["above_context_tokens", "input", "output", "reasoning", "cache_read", "cache_write"] as const;
-
-export const haveSameContextTiers = (
-  left: ContextTierPricing[] | undefined,
-  right: ContextTierPricing[] | undefined,
-): boolean => {
-  const a = left ?? [];
-  const b = right ?? [];
-  return a.length === b.length && a.every((tier, index) => contextTierFields.every((field) => tier[field] === b[index][field]));
-};
-
 export const hasPricingChanged = (
   existing: Pricing,
   updated: Omit<Pricing, "_id" | "_creationTime">,
@@ -323,7 +276,6 @@ export const hasPricingChanged = (
   existing.pricing.reasoning !== updated.pricing.reasoning ||
   existing.pricing.cache_read !== updated.pricing.cache_read ||
   existing.pricing.cache_write !== updated.pricing.cache_write ||
-  !haveSameContextTiers(existing.pricing.context_tiers, updated.pricing.context_tiers) ||
   existing.limits.context !== updated.limits.context ||
   existing.limits.output !== updated.limits.output ||
   existing.modelName !== updated.modelName ||
