@@ -5,6 +5,7 @@ export type CalculatedCosts = {
   completionTokensCost: number;
   reasoningTokensCost: number;
   cachedInputTokensCost: number;
+  cacheWriteTokensCost: number;
   totalCost: number;
 };
 

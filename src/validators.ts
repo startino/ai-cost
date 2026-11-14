@@ -13,6 +13,7 @@ export const vUsage = v.object({
   totalTokens: v.number(),
   reasoningTokens: v.optional(v.number()),
   cachedInputTokens: v.optional(v.number()),
+  cacheWriteTokens: v.optional(v.number()),
 });
 
 export type Usage = Infer<typeof vUsage>;
@@ -214,6 +215,7 @@ export const vCost = v.object({
   completionTokensCost: v.number(),
   reasoningTokensCost: v.optional(v.number()),
   cachedInputTokensCost: v.optional(v.number()),
+  cacheWriteTokensCost: v.optional(v.number()),
   totalCost: v.number(),
 });
 

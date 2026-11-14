@@ -20,25 +20,29 @@ export type TokenUsage = {
   completionTokens?: number;
   reasoningTokens?: number;
   cachedInputTokens?: number;
+  cacheWriteTokens?: number;
 };
 
 export const calculateTokenCosts = (prices: PricingData, usage: TokenUsage): CalculatedCosts => {
   const promptTokens = usage.promptTokens || 0;
   const cachedInputTokens = usage.cachedInputTokens || 0;
+  const cacheWriteTokens = usage.cacheWriteTokens || 0;
   const completionTokens = usage.completionTokens || 0;
   const reasoningTokens = Math.min(usage.reasoningTokens || 0, completionTokens);
 
-  const promptTokensCost = ((promptTokens - cachedInputTokens) / MILLION) * (prices.input || 0);
+  const promptTokensCost = ((promptTokens - cachedInputTokens - cacheWriteTokens) / MILLION) * (prices.input || 0);
   const completionTokensCost = ((completionTokens - reasoningTokens) / MILLION) * (prices.output || 0);
   const reasoningTokensCost = (reasoningTokens / MILLION) * (prices.reasoning ?? prices.output ?? 0);
   const cachedInputTokensCost = (cachedInputTokens / MILLION) * (prices.cache_read ?? (prices.input || 0) * 0.25);
+  const cacheWriteTokensCost = (cacheWriteTokens / MILLION) * (prices.cache_write ?? prices.input ?? 0);
 
   return {
     promptTokensCost: round8(promptTokensCost),
     completionTokensCost: round8(completionTokensCost),
     reasoningTokensCost: round8(reasoningTokensCost),
     cachedInputTokensCost: round8(cachedInputTokensCost),
-    totalCost: round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost),
+    cacheWriteTokensCost: round8(cacheWriteTokensCost),
+    totalCost: round8(promptTokensCost + completionTokensCost + reasoningTokensCost + cachedInputTokensCost + cacheWriteTokensCost),
   };
 };
 
@@ -50,6 +54,7 @@ export const calculateUserCosts = (costs: CalculatedCosts, markupMultiplier: num
   completionTokensCost: round8(costs.completionTokensCost * markupMultiplier),
   reasoningTokensCost: round8(costs.reasoningTokensCost * markupMultiplier),
   cachedInputTokensCost: round8(costs.cachedInputTokensCost * markupMultiplier),
+  cacheWriteTokensCost: round8(costs.cacheWriteTokensCost * markupMultiplier),
   totalCost: round8(costs.totalCost * markupMultiplier),
 });
 
