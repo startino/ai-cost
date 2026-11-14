@@ -33,14 +33,6 @@ export type ModelsDevModel = {
     reasoning?: number;
     cache_read?: number;
     cache_write?: number;
-    tiers?: {
-      input?: number;
-      output?: number;
-      reasoning?: number;
-      cache_read?: number;
-      cache_write?: number;
-      tier?: { type?: string; size?: number };
-    }[];
   };
   limit?: {
     context?: number;

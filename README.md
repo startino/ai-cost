@@ -117,7 +117,6 @@ Token counts follow the OpenAI usage format:
 
 - `promptTokens` includes `cachedInputTokens`. Cached tokens are charged at the `cache_read` price.
 - `completionTokens` includes `reasoningTokens`. Reasoning tokens are charged at the `reasoning` price, or at the `output` price when the model has no `reasoning` price.
-- When `promptTokens` is more than the context size of a models.dev price tier (for example, 200,000 tokens), the prices of the highest such tier apply to the whole request.
 
 ### Track tool costs
 
